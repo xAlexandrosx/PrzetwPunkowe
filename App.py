@@ -59,7 +59,7 @@ class PPMJPEGApp:
         point_menu.add_command(label="Skala szarości (Luminancja)", command=lambda: self.apply_grayscale("luminosity"))
         menubar.add_cascade(label="Przetwarzanie punktowe", menu=point_menu)
 
-        # NOWA KATEGORIA: Filtrowanie
+        # Kategoria: Filtrowanie
         filter_menu = tk.Menu(menubar, tearoff=0)
         filter_menu.add_command(label="Filtr wygładzający (uśredniający)", command=self.apply_smoothing)
         filter_menu.add_command(label="Filtr medianowy", command=self.apply_median)
@@ -321,20 +321,12 @@ class PPMJPEGApp:
         if 0 <= img_x < self.current_width and 0 <= img_y < self.current_height:
             pixel_val = self.image_data.getpixel((img_x, img_y))
 
-            if self.color_space == "RGB":
-                r, g, b = pixel_val[:3]
-                info_str = f"X: {img_x}, Y: {img_y} | R: {r}, G: {g}, B: {b}"
-            elif self.color_space == "CMYK":
-                c_b, m_b, y_b, k_b = pixel_val
-                c_pct = int(round((c_b / 255.0) * 100))
-                m_pct = int(round((m_b / 255.0) * 100))
-                y_pct = int(round((y_b / 255.0) * 100))
-                k_pct = int(round((k_b / 255.0) * 100))
-                info_str = f"X: {img_x}, Y: {img_y} | C: {c_pct}%, M: {m_pct}%, Y: {y_pct}%, K: {k_pct}%"
-            
+            r, g, b = pixel_val[:3]
+            info_str = f"X: {img_x}, Y: {img_y} | R: {r}, G: {g}, B: {b}"
+
             if self.zoom_level >= 4.0:
                 info_str += f" | Zoom: {self.zoom_level:.1f}x"
-            
+
             self.status_var.set(info_str)
         else:
             self.status_var.set("Kursor poza obszarem obrazu")

@@ -4,7 +4,6 @@ from PIL import Image, ImageTk, ImageDraw
 import colorsys
 
 class NewImageDialog:
-    """Rozbudowane okno dialogowe do tworzenia nowego obrazu z wyborem koloru tła (RGB/CMYK) i wykresem kolorów."""
     def __init__(self, root, callback):
         self.root = root
         self.callback = callback
@@ -288,7 +287,6 @@ class NewImageDialog:
 
 
 class PointOperationDialog:
-    """Uniwersalne okno dialogowe do obsługi operacji punktowych (dodawanie, odejmowanie, mnożenie, dzielenie, jasność)."""
 
     def __init__(self, root, operation_name, callback):
         self.root = root
@@ -300,10 +298,10 @@ class PointOperationDialog:
         self.dialog.resizable(False, False)
         self.dialog.grab_set()
 
-        self.val1 = tk.DoubleVar(value=0.0 if operation_name != 'mul' and operation_name != 'div' else 1.0)
-        self.val2 = tk.DoubleVar(value=0.0 if operation_name != 'mul' and operation_name != 'div' else 1.0)
-        self.val3 = tk.DoubleVar(value=0.0 if operation_name != 'mul' and operation_name != 'div' else 1.0)
-        self.val4 = tk.DoubleVar(value=0.0 if operation_name != 'mul' and operation_name != 'div' else 1.0)
+        default_val = 0.0 if operation_name not in ['mul', 'div'] else 1.0
+        self.val1 = tk.DoubleVar(value=default_val)
+        self.val2 = tk.DoubleVar(value=default_val)
+        self.val3 = tk.DoubleVar(value=default_val)
 
         self._build_ui()
         self.dialog.bind("<Return>", lambda e: self.on_confirm())
@@ -322,8 +320,8 @@ class PointOperationDialog:
             tk.Label(form_frame, text="Zmiana poziomu (-255 do 255):").grid(row=0, column=0, sticky="w", pady=2)
             tk.Entry(form_frame, textvariable=self.val1, width=10, justify="center").grid(row=0, column=1, padx=5)
         else:
-            labels = ["Kanał 1 (R/C):", "Kanał 2 (G/M):", "Kanał 3 (B/Y):", "Kanał 4 (K):"]
-            variables = [self.val1, self.val2, self.val3, self.val4]
+            labels = ["Kanał R (Czerwony):", "Kanał G (Zielony):", "Kanał B (Niebieski):"]
+            variables = [self.val1, self.val2, self.val3]
             for i, (lbl, var) in enumerate(zip(labels, variables)):
                 tk.Label(form_frame, text=lbl).grid(row=i, column=0, sticky="w", pady=2)
                 tk.Entry(form_frame, textvariable=var, width=10, justify="center").grid(row=i, column=1, padx=5, pady=2)
@@ -342,16 +340,15 @@ class PointOperationDialog:
                 vals = (
                     float(self.val1.get()),
                     float(self.val2.get()),
-                    float(self.val3.get()),
-                    float(self.val4.get())
+                    float(self.val3.get())
                 )
             self.dialog.destroy()
             self.callback(vals)
         except ValueError:
             messagebox.showerror("Błąd", "Wprowadzone wartości muszą być poprawnymi liczbami.", parent=self.dialog)
 
+
     class GaussianBlurDialog:
-        """Okno dialogowe do wyboru wartości sigma dla rozmycia gaussowskiego."""
 
         def __init__(self, root, callback):
             self.root = root
@@ -370,7 +367,7 @@ class PointOperationDialog:
             main_frame = tk.Frame(self.dialog, padx=15, pady=15)
             main_frame.pack(fill=tk.BOTH, expand=True)
 
-            tk.Label(main_frame, text="Wprowadź wartość Sigma (np. 1.0 - 5.0):").pack(anchor="w", pady=(0, 5))
+            tk.Label(main_frame, text="Wprowadź wartość Sigma:").pack(anchor="w", pady=(0, 5))
             self.entry = tk.Entry(main_frame, textvariable=self.sigma_var, width=15, justify="center")
             self.entry.pack(fill=tk.X, pady=(0, 15))
             self.entry.focus_set()
@@ -392,7 +389,6 @@ class PointOperationDialog:
                 messagebox.showerror("Błąd", "Wartość sigma musi być dodatnią liczbą.", parent=self.dialog)
 
     class CustomKernelDialog:
-        """Okno dialogowe do wprowadzania własnej macierzi splotu o dowolnym rozmiarze."""
 
         def __init__(self, root, callback):
             self.root = root
@@ -415,7 +411,7 @@ class PointOperationDialog:
 
             top_f = tk.Frame(self.main_frame)
             top_f.pack(fill=tk.X, pady=(0, 10))
-            tk.Label(top_f, text="Rozmiar maski (nieparzysty, np. 3, 5):").pack(side=tk.LEFT)
+            tk.Label(top_f, text="Rozmiar maski (nieparzysty):").pack(side=tk.LEFT)
             self.size_entry = tk.Entry(top_f, textvariable=self.size_var, width=5, justify="center")
             self.size_entry.pack(side=tk.LEFT, padx=5)
             tk.Button(top_f, text="Generuj siatkę", command=self._rebuild_grid).pack(side=tk.LEFT, padx=5)

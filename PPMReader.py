@@ -1,9 +1,6 @@
 class PPMReader:
 
-
     buffer_size: int = 65536    
-
-
 
     def read_ppm(self, file_path: str) -> dict:
         try:
@@ -19,13 +16,6 @@ class PPMReader:
 
         except Exception as e:
             raise RuntimeError(f"Błąd parsowania pliku PPM: {e}")
-
-
-
-
-
-
-
 
     def _read_ppm_p3(self, file_path: str) -> dict:
         tokens = []
@@ -67,14 +57,6 @@ class PPMReader:
             "pixels": pixels
         }
 
-
-
-
-
-
-
-    
-
     def _read_ppm_p6(self, file_path: str) -> dict:
         with open(file_path, "rb") as file_obj:
             tokens = []
@@ -105,10 +87,6 @@ class PPMReader:
                 raise ValueError(f"Nieobsługiwana maksymalna wartość koloru: {max_val}.")
             
         return self._read_p6_binary_data(file_path, width, height, max_val)
-
-
-
-
 
     def _read_p6_binary_data(self, file_path: str, width: int, height: int, max_val: int) -> dict:
         """Metoda doczytująca binarne dane P6 blokowo za pomocą zdefiniowanego bufora."""

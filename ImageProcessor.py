@@ -9,7 +9,6 @@ class ImageProcessor:
     
     @staticmethod
     def linear_scaling(image_data, width, height):
-        """Wykonuje skalowanie liniowe kolorów dla obrazu PIL."""
         if image_data is None:
             return None
 
@@ -43,66 +42,41 @@ class ImageProcessor:
             return None
 
         mode = image_data.mode
+
+        if mode != "RGB":
+            image_data = image_data.convert("RGB")
+
         width, height = image_data.size
         pixels = list(image_data.getdata())
         new_pixels = []
 
         for p in pixels:
-            if mode == "RGB":
-                r, g, b = p
-                if operation_type == 'add':
-                    r = int(min(255, max(0, r + values[0])))
-                    g = int(min(255, max(0, g + values[1])))
-                    b = int(min(255, max(0, b + values[2])))
-                elif operation_type == 'sub':
-                    r = int(min(255, max(0, r - values[0])))
-                    g = int(min(255, max(0, g - values[1])))
-                    b = int(min(255, max(0, b - values[2])))
-                elif operation_type == 'mul':
-                    r = int(min(255, max(0, r * values[0])))
-                    g = int(min(255, max(0, g * values[1])))
-                    b = int(min(255, max(0, b * values[2])))
-                elif operation_type == 'div':
-                    r = int(min(255, max(0, r / values[0]))) if values[0] != 0 else r
-                    g = int(min(255, max(0, g / values[1]))) if values[1] != 0 else g
-                    b = int(min(255, max(0, b / values[2]))) if values[2] != 0 else b
-                elif operation_type == 'brightness':
-                    r = int(min(255, max(0, r + values[0])))
-                    g = int(min(255, max(0, g + values[0])))
-                    b = int(min(255, max(0, b + values[0])))
-                new_pixels.append((r, g, b))
+            r, g, b = p[:3]
 
-            elif mode == "CMYK":
-                c, m, y, k = p
-                val = values[0] if operation_type == 'brightness' else values
-                if operation_type == 'add':
-                    c = int(min(255, max(0, c + val[0])))
-                    m = int(min(255, max(0, m + val[1])))
-                    y_chan = int(min(255, max(0, y + val[2])))
-                    k_chan = int(min(255, max(0, k + val[3])))
-                elif operation_type == 'sub':
-                    c = int(min(255, max(0, c - val[0])))
-                    m = int(min(255, max(0, m - val[1])))
-                    y_chan = int(min(255, max(0, y - val[2])))
-                    k_chan = int(min(255, max(0, k - val[3])))
-                elif operation_type == 'mul':
-                    c = int(min(255, max(0, c * val[0])))
-                    m = int(min(255, max(0, m * val[1])))
-                    y_chan = int(min(255, max(0, y * val[2])))
-                    k_chan = int(min(255, max(0, k * val[3])))
-                elif operation_type == 'div':
-                    c = int(min(255, max(0, c / val[0]))) if val[0] != 0 else c
-                    m = int(min(255, max(0, m / val[1]))) if val[1] != 0 else m
-                    y_chan = int(min(255, max(0, y / val[2]))) if val[2] != 0 else y
-                    k_chan = int(min(255, max(0, k / val[3]))) if val[3] != 0 else k
-                elif operation_type == 'brightness':
-                    c = int(min(255, max(0, c + val)))
-                    m = int(min(255, max(0, m + val)))
-                    y_chan = int(min(255, max(0, y + val)))
-                    k_chan = int(min(255, max(0, k + val)))
-                new_pixels.append((c, m, y_chan, k_chan))
+            if operation_type == 'add':
+                r = int(min(255, max(0, r + values[0])))
+                g = int(min(255, max(0, g + values[1])))
+                b = int(min(255, max(0, b + values[2])))
+            elif operation_type == 'sub':
+                r = int(min(255, max(0, r - values[0])))
+                g = int(min(255, max(0, g - values[1])))
+                b = int(min(255, max(0, b - values[2])))
+            elif operation_type == 'mul':
+                r = int(min(255, max(0, r * values[0])))
+                g = int(min(255, max(0, g * values[1])))
+                b = int(min(255, max(0, b * values[2])))
+            elif operation_type == 'div':
+                r = int(min(255, max(0, r / values[0]))) if values[0] != 0 else r
+                g = int(min(255, max(0, g / values[1]))) if values[1] != 0 else g
+                b = int(min(255, max(0, b / values[2]))) if values[2] != 0 else b
+            elif operation_type == 'brightness':
+                r = int(min(255, max(0, r + values[0])))
+                g = int(min(255, max(0, g + values[0])))
+                b = int(min(255, max(0, b + values[0])))
 
-        new_img = Image.new(mode, (width, height))
+            new_pixels.append((r, g, b))
+
+        new_img = Image.new("RGB", (width, height))
         new_img.putdata(new_pixels)
         return new_img
 
@@ -143,6 +117,55 @@ class ImageProcessor:
         return pixels[y * width + x]
 
     @staticmethod
+    def _apply_kernel(pixels, width, height, kernel, normalize=True):
+        k_height = len(kernel)
+        k_width = len(kernel[0])
+        ky_radius = k_height // 2
+        kx_radius = k_width // 2
+
+        k_sum = sum(sum(row) for row in kernel) if normalize else 1.0
+
+        lut = {}
+        new_pixels = []
+
+        for y in range(height):
+            for x in range(width):
+                r_sum = g_sum = b_sum = 0.0
+                for j in range(k_height):
+                    for i in range(k_width):
+                        px_x = x + i - kx_radius
+                        px_y = y + j - ky_radius
+                        pixel = ImageProcessor._get_pixel_padded(pixels, width, height, px_x, px_y)
+                        w = kernel[j][i]
+
+                        cache_key = (pixel, w)
+                        if cache_key in lut:
+                            r_w, g_w, b_w = lut[cache_key]
+                        else:
+                            pr, pg, pb = pixel
+                            r_w = pr * w
+                            g_w = pg * w
+                            b_w = pb * w
+                            lut[cache_key] = (r_w, g_w, b_w)
+
+                        r_sum += r_w
+                        g_sum += g_w
+                        b_sum += b_w
+
+                if normalize and k_sum != 0:
+                    r_sum /= k_sum
+                    g_sum /= k_sum
+                    b_sum /= k_sum
+
+                new_pixels.append((
+                    int(min(255, max(0, round(r_sum)))),
+                    int(min(255, max(0, round(g_sum)))),
+                    int(min(255, max(0, round(b_sum))))
+                ))
+
+        return new_pixels
+
+    @staticmethod
     def smoothing_filter(image_data):
         """Filtr wygładzający (uśredniający 3x3)."""
         if image_data is None: return None
@@ -150,26 +173,47 @@ class ImageProcessor:
             image_data = ColorConverter.convert_image_to_rgb(image_data)
         width, height = image_data.size
         pixels = list(image_data.getdata())
-        new_pixels = []
 
-        for y in range(height):
-            for x in range(width):
-                r_sum = g_sum = b_sum = 0
-                for j in range(-1, 2):
-                    for i in range(-1, 2):
-                        pr, pg, pb = ImageProcessor._get_pixel_padded(pixels, width, height, x + i, y + j)
-                        r_sum += pr
-                        g_sum += pg
-                        b_sum += pb
-                new_pixels.append((r_sum // 9, g_sum // 9, b_sum // 9))
+        kernel = [[1, 1, 1], [1, 1, 1], [1, 1, 1]]
+        new_pixels = ImageProcessor._apply_kernel(pixels, width, height, kernel, normalize=True)
 
         new_img = Image.new("RGB", (width, height))
         new_img.putdata(new_pixels)
         return new_img
 
     @staticmethod
+    def sharpening_filter(image_data):
+        if image_data is None: return None
+        if image_data.mode == "CMYK":
+            image_data = ColorConverter.convert_image_to_rgb(image_data)
+        width, height = image_data.size
+        pixels = list(image_data.getdata())
+
+        kernel = [[0, -1, 0], [-1, 5, -1], [0, -1, 0]]
+        new_pixels = ImageProcessor._apply_kernel(pixels, width, height, kernel, normalize=False)
+
+        new_img = Image.new("RGB", (width, height))
+        new_img.putdata(new_pixels)
+        return new_img
+
+    @staticmethod
+    def custom_convolution(image_data, kernel):
+        if image_data is None: return None
+        if image_data.mode == "CMYK":
+            image_data = ColorConverter.convert_image_to_rgb(image_data)
+        width, height = image_data.size
+        pixels = list(image_data.getdata())
+
+        new_pixels = ImageProcessor._apply_kernel(pixels, width, height, kernel, normalize=True)
+
+        new_img = Image.new("RGB", (width, height))
+        new_img.putdata(new_pixels)
+        return new_img
+
+
+
+    @staticmethod
     def median_filter(image_data):
-        """Filtr medianowy 3x3."""
         if image_data is None: return None
         if image_data.mode == "CMYK":
             image_data = ColorConverter.convert_image_to_rgb(image_data)
@@ -198,7 +242,7 @@ class ImageProcessor:
 
     @staticmethod
     def sobel_filter(image_data):
-        """Filtr wykrywania krawędzi (operator Sobela)."""
+        """Filtr wykrywania krawędzi (operator Sobela) z optymalizacją tablicy LUT."""
         if image_data is None: return None
         if image_data.mode == "CMYK":
             image_data = ColorConverter.convert_image_to_rgb(image_data)
@@ -209,57 +253,48 @@ class ImageProcessor:
         gx_kernel = [[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]]
         gy_kernel = [[-1, -2, -1], [0, 0, 0], [1, 2, 1]]
 
+        lut = {}
+
         for y in range(height):
             for x in range(width):
                 rx = gx = ry = gy = bx = by = 0
                 for j in range(-1, 2):
                     for i in range(-1, 2):
-                        pr, pg, pb = ImageProcessor._get_pixel_padded(pixels, width, height, x + i, y + j)
+                        pixel = ImageProcessor._get_pixel_padded(pixels, width, height, x + i, y + j)
                         wx = gx_kernel[j + 1][i + 1]
                         wy = gy_kernel[j + 1][i + 1]
 
-                        rx += pr * wx
-                        ry += pr * wy
-                        gx += pg * wx
-                        gy += pg * wy
-                        bx += pb * wx
-                        by += pb * wy
+                        cache_key_x = (pixel, wx)
+                        if cache_key_x in lut:
+                            r_wx, g_wx, b_wx = lut[cache_key_x]
+                        else:
+                            pr, pg, pb = pixel
+                            r_wx = pr * wx
+                            g_wx = pg * wx
+                            b_wx = pb * wx
+                            lut[cache_key_x] = (r_wx, g_wx, b_wx)
+
+                        rx += r_wx
+                        gx += g_wx
+                        bx += b_wx
+
+                        cache_key_y = (pixel, wy)
+                        if cache_key_y in lut:
+                            r_wy, g_wy, b_wy = lut[cache_key_y]
+                        else:
+                            pr, pg, pb = pixel
+                            r_wy = pr * wy
+                            g_wy = pg * wy
+                            b_wy = pb * wy
+                            lut[cache_key_y] = (r_wy, g_wy, b_wy)
+
+                        ry += r_wy
+                        gy += g_wy
+                        by += b_wy
 
                 r = int(min(255, max(0, (rx ** 2 + ry ** 2) ** 0.5)))
                 g = int(min(255, max(0, (gx ** 2 + gy ** 2) ** 0.5)))
                 b = int(min(255, max(0, (bx ** 2 + by ** 2) ** 0.5)))
-                new_pixels.append((r, g, b))
-
-        new_img = Image.new("RGB", (width, height))
-        new_img.putdata(new_pixels)
-        return new_img
-
-    @staticmethod
-    def sharpening_filter(image_data):
-        """Filtr górnoprzepustowy wyostrzający."""
-        if image_data is None: return None
-        if image_data.mode == "CMYK":
-            image_data = ColorConverter.convert_image_to_rgb(image_data)
-        width, height = image_data.size
-        pixels = list(image_data.getdata())
-        new_pixels = []
-
-        kernel = [[0, -1, 0], [-1, 5, -1], [0, -1, 0]]
-
-        for y in range(height):
-            for x in range(width):
-                r_sum = g_sum = b_sum = 0
-                for j in range(-1, 2):
-                    for i in range(-1, 2):
-                        pr, pg, pb = ImageProcessor._get_pixel_padded(pixels, width, height, x + i, y + j)
-                        w = kernel[j + 1][i + 1]
-                        r_sum += pr * w
-                        g_sum += pg * w
-                        b_sum += pb * w
-
-                r = int(min(255, max(0, r_sum)))
-                g = int(min(255, max(0, g_sum)))
-                b = int(min(255, max(0, b_sum)))
                 new_pixels.append((r, g, b))
 
         new_img = Image.new("RGB", (width, height))
@@ -277,7 +312,6 @@ class ImageProcessor:
         radius = max(1, int(math.ceil(3.0 * sigma)))
         size = 2 * radius + 1
 
-        # Generowanie jednowymiarowego jądra Gaussa
         kernel = [0.0] * size
         kernel_sum = 0.0
         for i in range(size):
@@ -290,7 +324,6 @@ class ImageProcessor:
 
         lut = {}
 
-        # Krok 1: Przejście poziome
         temp_pixels = [(0.0, 0.0, 0.0)] * (width * height)
         for y in range(height):
             for x in range(width):
@@ -315,7 +348,6 @@ class ImageProcessor:
                     b_sum += b_w
                 temp_pixels[y * width + x] = (r_sum, g_sum, b_sum)
 
-        # Krok 2: Przejście pionowe
         new_pixels = []
         for y in range(height):
             for x in range(width):
@@ -338,51 +370,6 @@ class ImageProcessor:
                     r_sum += r_w
                     g_sum += g_w
                     b_sum += b_w
-
-                new_pixels.append((
-                    int(min(255, max(0, round(r_sum)))),
-                    int(min(255, max(0, round(g_sum)))),
-                    int(min(255, max(0, round(b_sum))))
-                ))
-
-        new_img = Image.new("RGB", (width, height))
-        new_img.putdata(new_pixels)
-        return new_img
-
-    @staticmethod
-    def custom_convolution(image_data, kernel):
-        """Splot maski dowolnego rozmiaru i dowolnych wartości."""
-        if image_data is None: return None
-        if image_data.mode == "CMYK":
-            image_data = ColorConverter.convert_image_to_rgb(image_data)
-        width, height = image_data.size
-        pixels = list(image_data.getdata())
-        new_pixels = []
-
-        k_height = len(kernel)
-        k_width = len(kernel[0])
-        ky_radius = k_height // 2
-        kx_radius = k_width // 2
-
-        k_sum = sum(sum(row) for row in kernel)
-
-        for y in range(height):
-            for x in range(width):
-                r_sum = g_sum = b_sum = 0.0
-                for j in range(k_height):
-                    for i in range(k_width):
-                        px_x = x + i - kx_radius
-                        px_y = y + j - ky_radius
-                        pr, pg, pb = ImageProcessor._get_pixel_padded(pixels, width, height, px_x, px_y)
-                        w = kernel[j][i]
-                        r_sum += pr * w
-                        g_sum += pg * w
-                        b_sum += pb * w
-
-                if k_sum != 0:
-                    r_sum /= k_sum
-                    g_sum /= k_sum
-                    b_sum /= k_sum
 
                 new_pixels.append((
                     int(min(255, max(0, round(r_sum)))),

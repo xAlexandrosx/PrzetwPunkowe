@@ -3,6 +3,41 @@ from tkinter import messagebox, ttk
 from PIL import Image, ImageTk, ImageDraw
 import colorsys
 
+class StructuringElementDialog:
+    def __init__(self, root, callback, hit_or_miss=False):
+        self.callback = callback
+        self.hit_or_miss = hit_or_miss
+        self.dialog = tk.Toplevel(root)
+        self.dialog.title("Element strukturyzujący")
+        self.dialog.grab_set()
+        frame = tk.Frame(self.dialog, padx=15, pady=15)
+        frame.pack(fill=tk.BOTH, expand=True)
+        explanation = ("1 = czarny obiekt, 0 = białe tło, -1 = dowolny piksel"
+                       if hit_or_miss else "1 = element maski, 0 = poza maską")
+        tk.Label(frame, text="Wpisz wiersze macierzy, oddzielając wartości spacjami.\n"
+                             "Wymiary muszą być nieparzyste; środek jest punktem odniesienia.\n"
+                             + explanation + "\nPoza obrazem przyjmowane jest białe tło.",
+                 justify=tk.LEFT).pack(anchor=tk.W)
+        self.text = tk.Text(frame, width=35, height=8)
+        self.text.pack(fill=tk.BOTH, expand=True, pady=10)
+        self.text.insert("1.0", "-1 0 -1\n1 1 1\n-1 -1 -1" if hit_or_miss
+                         else "0 1 0\n1 1 1\n0 1 0")
+        buttons = tk.Frame(frame)
+        buttons.pack(fill=tk.X)
+        tk.Button(buttons, text="Anuluj", command=self.dialog.destroy).pack(side=tk.RIGHT)
+        tk.Button(buttons, text="Zastosuj", command=self.on_confirm).pack(side=tk.RIGHT, padx=5)
+        self.text.focus_set()
+
+    def on_confirm(self):
+        try:
+            rows = self.text.get("1.0", tk.END).strip().splitlines()
+            matrix = [[int(value) for value in row.split()] for row in rows]
+        except ValueError:
+            messagebox.showerror("Błąd", "Macierz musi zawierać liczby całkowite.", parent=self.dialog)
+            return
+        if self.callback(matrix):
+            self.dialog.destroy()
+
 class NewImageDialog:
     def __init__(self, root, callback):
         self.root = root

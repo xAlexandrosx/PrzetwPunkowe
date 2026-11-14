@@ -1,20 +1,25 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from collections import deque
+from tkinter import filedialog, messagebox, simpledialog
 from PIL import Image, ImageTk
 from PPMReader import PPMReader
 from ImageProcessor import ImageProcessor
+from Histogram import Histogram
+from Binarysation import Binarysation
+import Morphology
 from JpegHandler import JpegHandler
 from ColorConverter import ColorConverter
-from Dialogs import NewImageDialog, PointOperationDialog
+from Dialogs import NewImageDialog, PointOperationDialog, StructuringElementDialog
 from RGBCube import RGBCubeWindow
 
 class PPMJPEGApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("ppm jpg")
+        self.root.title("Grafika")
         self.root.geometry("900x700")
 
         self.image_data = None      
+        self.image_history = deque(maxlen=3)
         self.color_space = "RGB"  
         self.tk_image = None       
         self.zoom_level = 1.0       
@@ -42,43 +47,69 @@ class PPMJPEGApp:
         file_menu.add_command(label="Wyjdź", command=self.root.quit)
         menubar.add_cascade(label="Plik", menu=file_menu)
 
-        # Kategoria: Processing
+        edit_menu = tk.Menu(menubar, tearoff=0)
+        edit_menu.add_command(label="Cofnij", command=self.undo, accelerator="Cmd+Z")
+        menubar.add_cascade(label="Edycja", menu=edit_menu)
+
+        # Kategoria: Obraz
         processing_menu = tk.Menu(menubar, tearoff=0)
         processing_menu.add_command(label="Skalowanie liniowe", command=self.linear_scaling)
-        menubar.add_cascade(label="Processing", menu=processing_menu)
 
         # Kategoria: Przetwarzanie punktowe
-        point_menu = tk.Menu(menubar, tearoff=0)
+        point_menu = tk.Menu(processing_menu, tearoff=0)
         point_menu.add_command(label="Dodawanie...", command=lambda: self.open_point_dialog("Dodawanie", "add"))
         point_menu.add_command(label="Odejmowanie...", command=lambda: self.open_point_dialog("Odejmowanie", "sub"))
         point_menu.add_command(label="Mnożenie...", command=lambda: self.open_point_dialog("Mnożenie", "mul"))
         point_menu.add_command(label="Dzielenie...", command=lambda: self.open_point_dialog("Dzielenie", "div"))
         point_menu.add_command(label="Zmiana jasności...", command=lambda: self.open_point_dialog("Jasność", "brightness"))
+        point_menu.add_command(label="Odwróć kolory", command=self.apply_invert_colors)
         point_menu.add_separator()
         point_menu.add_command(label="Skala szarości (Średnia)", command=lambda: self.apply_grayscale("average"))
         point_menu.add_command(label="Skala szarości (Luminancja)", command=lambda: self.apply_grayscale("luminosity"))
-        menubar.add_cascade(label="Przetwarzanie punktowe", menu=point_menu)
+        processing_menu.add_cascade(label="Operacje punktowe", menu=point_menu)
+
+        # Kategoria: Histogram
+        histogram_menu = tk.Menu(processing_menu, tearoff=0)
+        histogram_menu.add_command(label="Rozszerzenie histogramu", command=lambda: self.apply_histogram("stretch"))
+        histogram_menu.add_command(label="Wyrównanie histogramu", command=lambda: self.apply_histogram("equalize"))
+        processing_menu.add_cascade(label="Histogram", menu=histogram_menu)
+
+        # Kategoria: Binarysation
+        binary_menu = tk.Menu(processing_menu, tearoff=0)
+        binary_menu.add_command(label="Próg ręczny...", command=lambda: self.apply_binarysation("manual"))
+        binary_menu.add_command(label="Procentowa selekcja czarnego...", command=lambda: self.apply_binarysation("percent_black"))
+        binary_menu.add_command(label="Selekcja iteratywna średniej", command=lambda: self.apply_binarysation("mean_iterative"))
+        binary_menu.add_command(label="Selekcja entropii", command=lambda: self.apply_binarysation("entropy"))
+        binary_menu.add_command(label="Błąd minimalny", command=lambda: self.apply_binarysation("minimum_error"))
+        binary_menu.add_command(label="Rozmyty błąd minimalny", command=lambda: self.apply_binarysation("fuzzy_minimum_error"))
+        processing_menu.add_cascade(label="Binaryzacja", menu=binary_menu)
+
+        morphology_menu = tk.Menu(processing_menu, tearoff=0)
+        for label, method in (("Dylatacja...", "dilation"), ("Erozja...", "erosion"),
+                              ("Otwarcie...", "opening"), ("Domknięcie...", "closing"),
+                              ("Hit-or-miss...", "hit_or_miss"),
+                              ("Pocienianie...", "thinning"), ("Pogrubianie...", "thickening")):
+            morphology_menu.add_command(label=label, command=lambda m=method: self.open_morphology_dialog(m))
+        processing_menu.add_cascade(label="Morfologia", menu=morphology_menu)
 
         # Kategoria: Filtrowanie
-        filter_menu = tk.Menu(menubar, tearoff=0)
-        filter_menu.add_command(label="Filtr wygładzający (uśredniający)", command=self.apply_smoothing)
+        filter_menu = tk.Menu(processing_menu, tearoff=0)
+        filter_menu.add_command(label="Filtr wygładzający", command=self.apply_smoothing)
         filter_menu.add_command(label="Filtr medianowy", command=self.apply_median)
-        filter_menu.add_command(label="Filtr wykrywania krawędzi (Sobel)", command=self.apply_sobel)
-        filter_menu.add_command(label="Filtr górnoprzepustowy wyostrzający", command=self.apply_sharpening)
-        filter_menu.add_command(label="Rozmycie gaussowskie (sigma)...", command=self.open_gaussian_dialog)
-        filter_menu.add_command(label="Splot maski (niestandardowa)...", command=self.open_custom_kernel_dialog)
-        menubar.add_cascade(label="Filtrowanie", menu=filter_menu)
+        filter_menu.add_command(label="Filtr Sobel", command=self.apply_sobel)
+        filter_menu.add_command(label="Filtr wyostrzający", command=self.apply_sharpening)
+        filter_menu.add_command(label="Filtr Gauss", command=self.open_gaussian_dialog)
+        filter_menu.add_command(label="Filtr Niestandardowy", command=self.open_custom_kernel_dialog)
+        processing_menu.add_cascade(label="Filtrowanie", menu=filter_menu)
+        menubar.add_cascade(label="Obraz", menu=processing_menu)
 
         # Kategoria: Color
         self.color_menu = tk.Menu(menubar, tearoff=0)
         self.color_menu.add_command(label="Switch to RGB", command=self.switch_to_rgb)
         self.color_menu.add_command(label="Switch to CMYK", command=self.switch_to_cmyk)
-        menubar.add_cascade(label="Color", menu=self.color_menu)
-
-        # Kategoria RGB Cube
-        rgb_cube_menu = tk.Menu(menubar, tearoff=0)
-        rgb_cube_menu.add_command(label="Otwórz kostkę RGB", command=self.open_rgb_cube)
-        menubar.add_cascade(label="RGB Cube", menu=rgb_cube_menu)
+        self.color_menu.add_separator()
+        self.color_menu.add_command(label="Otwórz kostkę RGB", command=self.open_rgb_cube)
+        menubar.add_cascade(label="Kolor", menu=self.color_menu)
 
         self.root.config(menu=menubar)
 
@@ -96,7 +127,7 @@ class PPMJPEGApp:
     def switch_to_rgb(self):
         if self.image_data is None or self.color_space == "RGB":
             return
-        self.image_data = ColorConverter.convert_image_to_rgb(self.image_data)
+        self._apply_image_operation(ColorConverter.convert_image_to_rgb)
         self.color_space = "RGB"
         self.update_color_menu_state()
         self.display_image()
@@ -105,7 +136,7 @@ class PPMJPEGApp:
     def switch_to_cmyk(self):
         if self.image_data is None or self.color_space == "CMYK":
             return
-        self.image_data = ColorConverter.convert_image_to_cmyk(self.image_data)
+        self._apply_image_operation(ColorConverter.convert_image_to_cmyk)
         self.color_space = "CMYK"
         self.update_color_menu_state()
         self.display_image()
@@ -129,10 +160,26 @@ class PPMJPEGApp:
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
     def bind_shortcuts(self):
+        self.root.bind("<Command-z>", self.undo)
         for sc in ["<Control-plus>", "<Control-equal>", "<Command-plus>", "<Command-equal>"]:
             self.root.bind(sc, lambda e: self.zoom_image_keyboard(direction="in"))
         for sc in ["<Control-minus>", "<Command-minus>"]:
             self.root.bind(sc, lambda e: self.zoom_image_keyboard(direction="out"))
+
+    def _apply_image_operation(self, operation, *args):
+        previous = self.image_data.copy()
+        result = operation(self.image_data, *args)
+        self.image_history.append((previous, self.color_space))
+        self.image_data = result
+
+    def undo(self, event=None):
+        if self.image_history:
+            self.image_data, self.color_space = self.image_history.pop()
+            self.current_width, self.current_height = self.image_data.size
+            self.update_color_menu_state()
+            self.display_image()
+            self.status_var.set("Cofnięto ostatnią operację")
+        return "break"
 
     def new_image(self):
         NewImageDialog(self.root, self._create_blank_image)
@@ -142,6 +189,7 @@ class PPMJPEGApp:
         self.current_height = height
         
         self.image_data = Image.new(mode, (width, height), bg_color)
+        self.image_history.clear()
         self.color_space = mode
         
         self.zoom_level = 1.0
@@ -174,6 +222,7 @@ class PPMJPEGApp:
             else:
                 raise ValueError("Nieobsługiwany format pliku")
             
+            self.image_history.clear()
             self.color_space = "RGB"  
             self.zoom_level = 1.0
             self.offset_x = 0
@@ -228,12 +277,14 @@ class PPMJPEGApp:
         if self.image_data is None:
             messagebox.showwarning("Error", "Load file first.")
             return
-        if self.color_space == "CMYK":
-            self.image_data = ColorConverter.convert_image_to_rgb(self.image_data)
-            self.color_space = "RGB"
-            self.update_color_menu_state()
+        def scale(image):
+            if self.color_space == "CMYK":
+                image = ColorConverter.convert_image_to_rgb(image)
+            return ImageProcessor.linear_scaling(image, self.current_width, self.current_height)
 
-        self.image_data = ImageProcessor.linear_scaling(self.image_data, self.current_width, self.current_height)
+        self._apply_image_operation(scale)
+        self.color_space = "RGB"
+        self.update_color_menu_state()
         self.display_image()
         messagebox.showinfo("Sukces", "Wykonano skalowanie liniowe")
 
@@ -338,25 +389,98 @@ class PPMJPEGApp:
         PointOperationDialog(self.root, title, lambda vals: self.execute_point_operation(op_type, vals))
 
     def execute_point_operation(self, op_type, vals):
-        self.image_data = ImageProcessor.point_operation(self.image_data, op_type, vals)
+        self._apply_image_operation(ImageProcessor.point_operation, op_type, vals)
+        self.color_space = "RGB"
+        self.update_color_menu_state()
         self.display_image()
         self.status_var.set(f"Wykonano operację punktową: {op_type}")
+
+    def apply_invert_colors(self):
+        if self.image_data is None:
+            messagebox.showwarning("Uwaga", "Najpierw wczytaj lub utwórz obraz!")
+            return
+        self._apply_image_operation(ImageProcessor.invert_colors)
+        self.color_space = "RGB"
+        self.update_color_menu_state()
+        self.display_image()
+        self.status_var.set("Odwrócono kolory")
 
     def apply_grayscale(self, method):
         if self.image_data is None:
             messagebox.showwarning("Uwaga", "Najpierw wczytaj lub utwórz obraz!")
             return
-        self.image_data = ImageProcessor.convert_to_grayscale(self.image_data, method)
+        self._apply_image_operation(ImageProcessor.convert_to_grayscale, method)
         self.color_space = "RGB"
         self.update_color_menu_state()
         self.display_image()
         self.status_var.set(f"Przekształcono do skali szarości metodą: {method}")
 
+    def apply_histogram(self, method):
+        if self.image_data is None:
+            messagebox.showwarning("Uwaga", "Najpierw wczytaj lub utwórz obraz!")
+            return
+        operation = Histogram.stretch if method == "stretch" else Histogram.equalize
+        self._apply_image_operation(operation)
+        self.color_space = "RGB"
+        self.update_color_menu_state()
+        self.display_image()
+        self.status_var.set("Rozszerzono histogram" if method == "stretch" else "Wyrównano histogram")
+
+    def apply_binarysation(self, method):
+        if self.image_data is None:
+            messagebox.showwarning("Uwaga", "Najpierw wczytaj lub utwórz obraz!")
+            return
+        operations = {
+            "manual": Binarysation.manual,
+            "percent_black": Binarysation.percent_black,
+            "mean_iterative": Binarysation.iterative_mean,
+            "entropy": Binarysation.entropy,
+            "minimum_error": Binarysation.minimum_error,
+            "fuzzy_minimum_error": Binarysation.fuzzy_minimum_error,
+        }
+        args = ()
+        if method == "manual":
+            value = simpledialog.askinteger("Binaryzacja", "Podaj próg (0–255):",
+                                            parent=self.root, minvalue=0, maxvalue=255)
+            if value is None:
+                return
+            args = (value,)
+        elif method == "percent_black":
+            value = simpledialog.askfloat("Binaryzacja", "Podaj procent czarnych pikseli (0–100):",
+                                          parent=self.root, minvalue=0, maxvalue=100)
+            if value is None:
+                return
+            args = (value,)
+        self._apply_image_operation(operations[method], *args)
+        self.color_space = "RGB"
+        self.update_color_menu_state()
+        self.display_image()
+        self.status_var.set(f"Wykonano binaryzację: {method}")
+
+    def open_morphology_dialog(self, method):
+        if self.image_data is None:
+            messagebox.showwarning("Uwaga", "Najpierw wczytaj lub utwórz obraz!")
+            return
+        StructuringElementDialog(self.root, lambda matrix: self.apply_morphology(method, matrix),
+                                 hit_or_miss=method in ("hit_or_miss", "thinning", "thickening"))
+
+    def apply_morphology(self, method, matrix):
+        try:
+            self._apply_image_operation(getattr(Morphology, method), matrix)
+        except ValueError as error:
+            messagebox.showerror("Błąd morfologii", str(error), parent=self.root)
+            return False
+        self.color_space = "RGB"
+        self.update_color_menu_state()
+        self.display_image()
+        self.status_var.set(f"Wykonano operację morfologiczną: {method}")
+        return True
+
     def apply_smoothing(self):
         if self.image_data is None:
             messagebox.showwarning("Uwaga", "Najpierw wczytaj lub utwórz obraz!")
             return
-        self.image_data = ImageProcessor.smoothing_filter(self.image_data)
+        self._apply_image_operation(ImageProcessor.smoothing_filter)
         self.color_space = "RGB"
         self.update_color_menu_state()
         self.display_image()
@@ -366,7 +490,7 @@ class PPMJPEGApp:
         if self.image_data is None:
             messagebox.showwarning("Uwaga", "Najpierw wczytaj lub utwórz obraz!")
             return
-        self.image_data = ImageProcessor.median_filter(self.image_data)
+        self._apply_image_operation(ImageProcessor.median_filter)
         self.color_space = "RGB"
         self.update_color_menu_state()
         self.display_image()
@@ -376,7 +500,7 @@ class PPMJPEGApp:
         if self.image_data is None:
             messagebox.showwarning("Uwaga", "Najpierw wczytaj lub utwórz obraz!")
             return
-        self.image_data = ImageProcessor.sobel_filter(self.image_data)
+        self._apply_image_operation(ImageProcessor.sobel_filter)
         self.color_space = "RGB"
         self.update_color_menu_state()
         self.display_image()
@@ -386,7 +510,7 @@ class PPMJPEGApp:
         if self.image_data is None:
             messagebox.showwarning("Uwaga", "Najpierw wczytaj lub utwórz obraz!")
             return
-        self.image_data = ImageProcessor.sharpening_filter(self.image_data)
+        self._apply_image_operation(ImageProcessor.sharpening_filter)
         self.color_space = "RGB"
         self.update_color_menu_state()
         self.display_image()
@@ -399,7 +523,7 @@ class PPMJPEGApp:
         PointOperationDialog.GaussianBlurDialog(self.root, self.execute_gaussian_blur)
 
     def execute_gaussian_blur(self, sigma):
-        self.image_data = ImageProcessor.gaussian_blur(self.image_data, sigma)
+        self._apply_image_operation(ImageProcessor.gaussian_blur, sigma)
         self.color_space = "RGB"
         self.update_color_menu_state()
         self.display_image()
@@ -412,7 +536,7 @@ class PPMJPEGApp:
         PointOperationDialog.CustomKernelDialog(self.root, self.execute_custom_convolution)
 
     def execute_custom_convolution(self, kernel):
-        self.image_data = ImageProcessor.custom_convolution(self.image_data, kernel)
+        self._apply_image_operation(ImageProcessor.custom_convolution, kernel)
         self.color_space = "RGB"
         self.update_color_menu_state()
         self.display_image()

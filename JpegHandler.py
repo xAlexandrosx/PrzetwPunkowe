@@ -3,7 +3,6 @@ from tkinter import filedialog, messagebox
 import tkinter as tk
 
 class JpegHandlerDialog:
-    """Klasa pomocnicza do obsługi niestandardowego okna dialogowego jakości JPEG (zapobiega zawieszaniu na macOS)."""
     def __init__(self, root, image_data):
         self.root = root
         self.image_data = image_data
@@ -52,7 +51,6 @@ class JpegHandlerDialog:
 class JpegHandler:
     @staticmethod
     def load_jpeg(file_path):
-        """Wczytuje plik JPEG i zwraca obiekt obrazu PIL w formacie RGB oraz jego wymiary."""
         image_data = Image.open(file_path).convert("RGB")
         width, height = image_data.size
         return image_data, width, height

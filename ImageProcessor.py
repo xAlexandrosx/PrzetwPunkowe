@@ -4,8 +4,34 @@ from PIL import Image
 
 from ColorConverter import ColorConverter
 
+try:
+    from gaussian_blur_cpp import gaussian_blur as _native_gaussian_blur
+except ModuleNotFoundError as error:
+    if error.name != "gaussian_blur_cpp":
+        raise
+    _native_gaussian_blur = None
+
 
 class ImageProcessor:
+
+    @staticmethod
+    def _rgb_image(size, pixels):
+        image = Image.new("RGB", size)
+        image.putdata(pixels)
+        return image
+
+    @staticmethod
+    def _convert_cmyk(image):
+        if image.mode == "CMYK":
+            return ColorConverter.convert_image_to_rgb(image)
+        return image
+
+    @staticmethod
+    def invert_colors(image_data):
+        if image_data is None:
+            return None
+        image_data = ImageProcessor._convert_cmyk(image_data).convert("RGB")
+        return image_data.point([255 - value for value in range(256)] * 3)
     
     @staticmethod
     def linear_scaling(image_data, width, height):
@@ -31,9 +57,7 @@ class ImageProcessor:
             for p in pixels
         ]
 
-        new_img = Image.new("RGB", (width, height))
-        new_img.putdata(scaled_pixels)
-        return new_img
+        return ImageProcessor._rgb_image((width, height), scaled_pixels)
 
     @staticmethod
     def point_operation(image_data, operation_type, values):
@@ -41,9 +65,7 @@ class ImageProcessor:
         if image_data is None:
             return None
 
-        mode = image_data.mode
-
-        if mode != "RGB":
+        if image_data.mode != "RGB":
             image_data = image_data.convert("RGB")
 
         width, height = image_data.size
@@ -76,9 +98,7 @@ class ImageProcessor:
 
             new_pixels.append((r, g, b))
 
-        new_img = Image.new("RGB", (width, height))
-        new_img.putdata(new_pixels)
-        return new_img
+        return ImageProcessor._rgb_image((width, height), new_pixels)
 
     @staticmethod
     def convert_to_grayscale(image_data, method="average"):
@@ -86,9 +106,7 @@ class ImageProcessor:
         if image_data is None:
             return None
 
-        working_img = image_data
-        if image_data.mode == "CMYK":
-            working_img = ColorConverter.convert_image_to_rgb(image_data)
+        working_img = ImageProcessor._convert_cmyk(image_data)
 
         width, height = working_img.size
         pixels = list(working_img.getdata())
@@ -105,13 +123,10 @@ class ImageProcessor:
 
             new_pixels.append((gray, gray, gray))
 
-        new_img = Image.new("RGB", (width, height))
-        new_img.putdata(new_pixels)
-        return new_img
+        return ImageProcessor._rgb_image((width, height), new_pixels)
 
     @staticmethod
     def _get_pixel_padded(pixels, width, height, x, y):
-        """Pomocnicza funkcja pobierająca piksel z uwzględnieniem replikacji brzegów obrazu."""
         x = max(0, min(width - 1, x))
         y = max(0, min(height - 1, y))
         return pixels[y * width + x]
@@ -167,56 +182,36 @@ class ImageProcessor:
 
     @staticmethod
     def smoothing_filter(image_data):
-        """Filtr wygładzający (uśredniający 3x3)."""
-        if image_data is None: return None
-        if image_data.mode == "CMYK":
-            image_data = ColorConverter.convert_image_to_rgb(image_data)
-        width, height = image_data.size
-        pixels = list(image_data.getdata())
-
         kernel = [[1, 1, 1], [1, 1, 1], [1, 1, 1]]
-        new_pixels = ImageProcessor._apply_kernel(pixels, width, height, kernel, normalize=True)
-
-        new_img = Image.new("RGB", (width, height))
-        new_img.putdata(new_pixels)
-        return new_img
+        return ImageProcessor._convolve_image(image_data, kernel, normalize=True)
 
     @staticmethod
     def sharpening_filter(image_data):
-        if image_data is None: return None
-        if image_data.mode == "CMYK":
-            image_data = ColorConverter.convert_image_to_rgb(image_data)
-        width, height = image_data.size
-        pixels = list(image_data.getdata())
-
         kernel = [[0, -1, 0], [-1, 5, -1], [0, -1, 0]]
-        new_pixels = ImageProcessor._apply_kernel(pixels, width, height, kernel, normalize=False)
-
-        new_img = Image.new("RGB", (width, height))
-        new_img.putdata(new_pixels)
-        return new_img
+        return ImageProcessor._convolve_image(image_data, kernel, normalize=False)
 
     @staticmethod
     def custom_convolution(image_data, kernel):
-        if image_data is None: return None
-        if image_data.mode == "CMYK":
-            image_data = ColorConverter.convert_image_to_rgb(image_data)
+        return ImageProcessor._convolve_image(image_data, kernel, normalize=True)
+
+    @staticmethod
+    def _convolve_image(image_data, kernel, normalize):
+        if image_data is None:
+            return None
+        image_data = ImageProcessor._convert_cmyk(image_data)
         width, height = image_data.size
         pixels = list(image_data.getdata())
 
-        new_pixels = ImageProcessor._apply_kernel(pixels, width, height, kernel, normalize=True)
-
-        new_img = Image.new("RGB", (width, height))
-        new_img.putdata(new_pixels)
-        return new_img
+        new_pixels = ImageProcessor._apply_kernel(pixels, width, height, kernel, normalize=normalize)
+        return ImageProcessor._rgb_image((width, height), new_pixels)
 
 
 
     @staticmethod
     def median_filter(image_data):
-        if image_data is None: return None
-        if image_data.mode == "CMYK":
-            image_data = ColorConverter.convert_image_to_rgb(image_data)
+        if image_data is None:
+            return None
+        image_data = ImageProcessor._convert_cmyk(image_data)
         width, height = image_data.size
         pixels = list(image_data.getdata())
         new_pixels = []
@@ -236,16 +231,13 @@ class ImageProcessor:
                 mid = len(r_list) // 2
                 new_pixels.append((r_list[mid], g_list[mid], b_list[mid]))
 
-        new_img = Image.new("RGB", (width, height))
-        new_img.putdata(new_pixels)
-        return new_img
+        return ImageProcessor._rgb_image((width, height), new_pixels)
 
     @staticmethod
     def sobel_filter(image_data):
-        """Filtr wykrywania krawędzi (operator Sobela) z optymalizacją tablicy LUT."""
-        if image_data is None: return None
-        if image_data.mode == "CMYK":
-            image_data = ColorConverter.convert_image_to_rgb(image_data)
+        if image_data is None:
+            return None
+        image_data = ImageProcessor._convert_cmyk(image_data)
         width, height = image_data.size
         pixels = list(image_data.getdata())
         new_pixels = []
@@ -297,86 +289,85 @@ class ImageProcessor:
                 b = int(min(255, max(0, (bx ** 2 + by ** 2) ** 0.5)))
                 new_pixels.append((r, g, b))
 
-        new_img = Image.new("RGB", (width, height))
-        new_img.putdata(new_pixels)
-        return new_img
+        return ImageProcessor._rgb_image((width, height), new_pixels)
 
     @staticmethod
     def gaussian_blur(image_data, sigma=1.0):
-        if image_data is None: return None
-        if image_data.mode == "CMYK":
-            image_data = ColorConverter.convert_image_to_rgb(image_data)
+        if image_data is None:
+            return None
+        if not math.isfinite(sigma) or sigma <= 0:
+            raise ValueError("sigma must be a positive finite number")
+        image_data = ImageProcessor._convert_cmyk(image_data)
+        if image_data.mode != "RGB":
+            image_data = image_data.convert("RGB")
+
         width, height = image_data.size
-        pixels = list(image_data.getdata())
+        if _native_gaussian_blur is not None and width and height:
+            pixels = _native_gaussian_blur(image_data.tobytes(), width, height, sigma)
+            return Image.frombytes("RGB", (width, height), pixels)
+
+        img_size = width * height
+        pixel_list = list(image_data.getdata())
 
         radius = max(1, int(math.ceil(3.0 * sigma)))
-        size = 2 * radius + 1
 
-        kernel = [0.0] * size
+        kernel_weights = []
         kernel_sum = 0.0
-        for i in range(size):
-            x_val = i - radius
-            val = math.exp(-(x_val ** 2) / (2.0 * (sigma ** 2)))
-            kernel[i] = val
-            kernel_sum += val
-        for i in range(size):
-            kernel[i] /= kernel_sum
+        for offset in range(-radius, radius + 1):
+            weight = math.exp(-(offset ** 2) / (2.0 * (sigma ** 2)))
+            kernel_weights.append((offset, weight))
+            kernel_sum += weight
 
-        lut = {}
+        multiplication_tables = []
 
-        temp_pixels = [(0.0, 0.0, 0.0)] * (width * height)
+        for offset, weight in kernel_weights:
+            normalized_weight = weight / kernel_sum
+            table = [intensity * normalized_weight for intensity in range(256)]
+            multiplication_tables.append(table)
+
+        horizontal_indices = [
+            [min(width - 1, max(0, x + offset)) for offset, _ in kernel_weights]
+            for x in range(width)
+        ]
+        vertical_indices = [
+            [min(height - 1, max(0, y + offset)) * width for offset, _ in kernel_weights]
+            for y in range(height)
+        ]
+
+        horizontal_pixels = [None] * img_size
         for y in range(height):
+            row_offset = y * width
             for x in range(width):
                 r_sum = g_sum = b_sum = 0.0
-                for i in range(size):
-                    px_idx = max(0, min(width - 1, x + i - radius))
-                    pixel = pixels[y * width + px_idx]
-                    w = kernel[i]
 
-                    cache_key = (pixel, w)
-                    if cache_key in lut:
-                        r_w, g_w, b_w = lut[cache_key]
-                    else:
-                        pr, pg, pb = pixel
-                        r_w = pr * w
-                        g_w = pg * w
-                        b_w = pb * w
-                        lut[cache_key] = (r_w, g_w, b_w)
+                for px, lookup in zip(horizontal_indices[x], multiplication_tables):
+                    pr, pg, pb = pixel_list[row_offset + px]
+                    r_sum += lookup[pr]
+                    g_sum += lookup[pg]
+                    b_sum += lookup[pb]
 
-                    r_sum += r_w
-                    g_sum += g_w
-                    b_sum += b_w
-                temp_pixels[y * width + x] = (r_sum, g_sum, b_sum)
-
-        new_pixels = []
-        for y in range(height):
-            for x in range(width):
-                r_sum = g_sum = b_sum = 0.0
-                for j in range(size):
-                    py_idx = max(0, min(height - 1, y + j - radius))
-                    pixel = temp_pixels[py_idx * width + x]
-                    w = kernel[j]
-
-                    cache_key = (pixel, w)
-                    if cache_key in lut:
-                        r_w, g_w, b_w = lut[cache_key]
-                    else:
-                        pr, pg, pb = pixel
-                        r_w = pr * w
-                        g_w = pg * w
-                        b_w = pb * w
-                        lut[cache_key] = (r_w, g_w, b_w)
-
-                    r_sum += r_w
-                    g_sum += g_w
-                    b_sum += b_w
-
-                new_pixels.append((
+                horizontal_pixels[row_offset + x] = (
                     int(min(255, max(0, round(r_sum)))),
                     int(min(255, max(0, round(g_sum)))),
                     int(min(255, max(0, round(b_sum))))
-                ))
+                )
 
-        new_img = Image.new("RGB", (width, height))
-        new_img.putdata(new_pixels)
-        return new_img
+        final_pixels = [None] * img_size
+        for y in range(height):
+            row_offset = y * width
+            for x in range(width):
+                r_sum = g_sum = b_sum = 0.0
+
+                for row_index, lookup in zip(vertical_indices[y], multiplication_tables):
+                    pr, pg, pb = horizontal_pixels[row_index + x]
+                    r_sum += lookup[pr]
+                    g_sum += lookup[pg]
+                    b_sum += lookup[pb]
+
+                final_pixels[row_offset + x] = (
+                    int(min(255, max(0, round(r_sum)))),
+                    int(min(255, max(0, round(g_sum)))),
+                    int(min(255, max(0, round(b_sum))))
+                )
+
+        return ImageProcessor._rgb_image((width, height), final_pixels)

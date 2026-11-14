@@ -9,7 +9,7 @@ from Binarysation import Binarysation
 import Morphology
 from JpegHandler import JpegHandler
 from ColorConverter import ColorConverter
-from Dialogs import NewImageDialog, PointOperationDialog, StructuringElementDialog
+from Dialogs import NewImageDialog, PixelPercentageDialog, PointOperationDialog, StructuringElementDialog
 from RGBCube import RGBCubeWindow
 
 class PPMJPEGApp:
@@ -54,6 +54,12 @@ class PPMJPEGApp:
         # Kategoria: Obraz
         processing_menu = tk.Menu(menubar, tearoff=0)
         processing_menu.add_command(label="Skalowanie liniowe", command=self.linear_scaling)
+        processing_menu.add_command(label="Procent pikseli RGB...", command=self.show_pixel_percentage)
+
+        mask_menu = tk.Menu(processing_menu, tearoff=0)
+        for label, channel in (("Czerwona", "R"), ("Zielona", "G"), ("Niebieska", "B")):
+            mask_menu.add_command(label=label, command=lambda c=channel: self.apply_color_mask(c))
+        processing_menu.add_cascade(label="Maski RGB", menu=mask_menu)
 
         # Kategoria: Przetwarzanie punktowe
         point_menu = tk.Menu(processing_menu, tearoff=0)
@@ -288,6 +294,24 @@ class PPMJPEGApp:
         self.display_image()
         messagebox.showinfo("Sukces", "Wykonano skalowanie liniowe")
 
+    def show_pixel_percentage(self):
+        if self.image_data is None:
+            messagebox.showwarning("Uwaga", "Najpierw wczytaj lub utwórz obraz!")
+            return
+
+        PixelPercentageDialog(self.root, self.calculate_pixel_percentage)
+
+    def calculate_pixel_percentage(self, color):
+        image = (ColorConverter.convert_image_to_rgb(self.image_data)
+                 if self.color_space == "CMYK" else self.image_data)
+        total = image.width * image.height
+        if total == 0:
+            messagebox.showwarning("Uwaga", "Obraz nie zawiera pikseli.", parent=self.root)
+            return
+        matches = sum(pixel == color for pixel in image.getdata())
+        messagebox.showinfo("Procent pikseli", f"RGB{color}: {matches / total * 100:.2f}%",
+                            parent=self.root)
+
     def display_image(self):
         if self.image_data is None:
             return
@@ -414,6 +438,24 @@ class PPMJPEGApp:
         self.update_color_menu_state()
         self.display_image()
         self.status_var.set(f"Przekształcono do skali szarości metodą: {method}")
+
+    def apply_color_mask(self, channel):
+        if self.image_data is None:
+            messagebox.showwarning("Uwaga", "Najpierw wczytaj lub utwórz obraz!")
+            return
+
+        def mask(image):
+            if self.color_space == "CMYK":
+                image = ColorConverter.convert_image_to_rgb(image)
+            selected = image.getchannel(channel)
+            empty = Image.new("L", image.size)
+            return Image.merge("RGB", tuple(selected if c == channel else empty for c in "RGB"))
+
+        self._apply_image_operation(mask)
+        self.color_space = "RGB"
+        self.update_color_menu_state()
+        self.display_image()
+        self.status_var.set(f"Zastosowano maskę kanału {channel}")
 
     def apply_histogram(self, method):
         if self.image_data is None:

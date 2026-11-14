@@ -321,6 +321,48 @@ class NewImageDialog:
             messagebox.showerror("Błąd", "Wymiary oraz wartości kolorów muszą być poprawnymi liczbami.", parent=self.dialog)
 
 
+class PixelPercentageDialog:
+    def __init__(self, root, callback):
+        self.callback = callback
+        self.dialog = tk.Toplevel(root)
+        self.dialog.title("Procent pikseli")
+        self.dialog.resizable(False, False)
+        self.dialog.grab_set()
+
+        main_frame = tk.Frame(self.dialog, padx=15, pady=15)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        tk.Label(main_frame, text="Wprowadź wartości RGB (0–255):",
+                 font=("Arial", 10, "bold")).pack(pady=(0, 10))
+        form_frame = tk.Frame(main_frame)
+        form_frame.pack(fill=tk.X, pady=5)
+        self.entries = []
+        for i, label in enumerate(("Kanał R (Czerwony):", "Kanał G (Zielony):", "Kanał B (Niebieski):")):
+            tk.Label(form_frame, text=label).grid(row=i, column=0, sticky="w", pady=2)
+            entry = tk.Entry(form_frame, width=10, justify="center")
+            entry.insert(0, "0")
+            entry.grid(row=i, column=1, padx=5, pady=2)
+            self.entries.append(entry)
+
+        btn_frame = tk.Frame(main_frame)
+        btn_frame.pack(fill=tk.X, pady=(15, 0))
+        tk.Button(btn_frame, text="Anuluj", command=self.dialog.destroy, width=10).pack(side=tk.LEFT)
+        tk.Button(btn_frame, text="Zastosuj", command=self.on_confirm, width=10).pack(side=tk.RIGHT)
+        self.dialog.bind("<Return>", lambda e: self.on_confirm())
+        self.entries[0].focus_set()
+        self.entries[0].select_range(0, tk.END)
+
+    def on_confirm(self):
+        try:
+            color = tuple(int(entry.get()) for entry in self.entries)
+            if any(value < 0 or value > 255 for value in color):
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Błąd", "Podaj całkowite wartości RGB od 0 do 255.", parent=self.dialog)
+            return
+        self.dialog.destroy()
+        self.callback(color)
+
+
 class PointOperationDialog:
 
     def __init__(self, root, operation_name, callback):
